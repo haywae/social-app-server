@@ -1,0 +1,26 @@
+# Local virtual environments
+venv/
+
+# Secrets
+.env
+.flaskenv
+sendgrid.env
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Test and editor-specific cache
+.pytest_cache/
+.VSCodeCounter/
+__pycache__
+
+
+# Downloaded binaries/archives
+terraform/
+.terraform/
+.terraform.lock.hcl
+terraform_1.13.2_linux_amd64.zipsendgrid.env
+*.tfstate
+*.tfstate.backup
+*.zip

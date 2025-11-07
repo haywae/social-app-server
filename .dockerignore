@@ -1,0 +1,34 @@
+# Directories
+__pycache__/
+
+.pytest_cache/
+
+.VSCodeCounter/
+
+tests/
+
+venv/
+
+terraform/
+
+# Files 
+.dockerignore
+
+.env
+sendgrid.env
+
+.flaskenv
+
+.git
+
+.gitignore
+
+Dockerfile
+
+local-start.sh
+
+terraform_1.13.2_linux_amd64.zip
+
+LICENSE.txt
+
+
