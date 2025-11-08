@@ -26,6 +26,7 @@ Flask-SQLAlchemy
 GeoAlchemy2
 gevent
 gevent-websocket
+google-auth
 greenlet
 gunicorn
 idna

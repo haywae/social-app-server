@@ -21,8 +21,8 @@ def create_app(config_object=None):
 
     # CORS guest list now includes both the client and the API itself (for tools like Swagger)
     origins = [
-        "https://wolexchange.com",
-        "https://www.wolexchange.com",
+        "https://social-app-client-civg.onrender.com",
+        "https://www.social-app-client-civg.onrender.com",
         "http://127.0.0.1:5173",
         client_url,
     ]
@@ -47,8 +47,7 @@ def create_app(config_object=None):
         app.config['JWT_COOKIE_SECURE'] = False # Allow over HTTP
         app.config['JWT_COOKIE_SAMESITE'] = 'Lax'  #-----Controls whether cookies are sent with cross-site requests-----
     else:
-        # This will work for wolexchange.com and api.wolexchange.com
-        app.config['JWT_COOKIE_DOMAIN'] = '.wolexchange.com'
+        app.config['JWT_COOKIE_DOMAIN'] = '.onrender.com'
         app.config['JWT_COOKIE_SECURE'] = True # Force HTTPS
         app.config['JWT_COOKIE_SAMESITE'] = 'None'  #-----Controls whether cookies are sent with cross-site requests-----
 
