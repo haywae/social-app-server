@@ -1,12 +1,10 @@
 from flask import make_response, jsonify, current_app
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, unset_jwt_cookies
-from flasgger import swag_from
 
 # Import the new service function and custom exceptions
 from app.services.auth import refresh_user_tokens
 from app.exceptions import InvalidTokenError
-from app.resources._docs_text import refresh_token_text
 from utils.app_utils.cookie_utils import set_auth_cookies
 
 class RefreshTokenResource(Resource):
@@ -15,7 +13,6 @@ class RefreshTokenResource(Resource):
     """
 
     @jwt_required(refresh=True)
-    @swag_from(refresh_token_text)
     def post(self):
         """
         Processes a POST request to generate a new access and refresh token.
