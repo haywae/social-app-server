@@ -1,74 +1,59 @@
-from datetime import datetime, timezone
-from flask import current_app
-from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt
-from app.services.redis import add_token_to_blocklist, is_token_blocklisted
+from flask import make_response, jsonify, current_app
+from flask_restful import Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, unset_jwt_cookies
+from flasgger import swag_from
+
+# Import the new service function and custom exceptions
+from app.services.auth import refresh_user_tokens
 from app.exceptions import InvalidTokenError
-from utils.app_utils.token_utils import TokenUtil
-from app.extensions import redis_client
-import json
+from app.resources._docs_text import refresh_token_text
+from utils.app_utils.cookie_utils import set_auth_cookies
 
-GRACE_PERIOD_SECONDS = 10
-
-def _get_grace_period_key(jti: str) -> str:
-    """Returns the Redis key for the grace period cache."""
-    return f"grace_jti:{jti}"
-
-def refresh_user_tokens(user_id: str, current_refresh_jti: str) -> dict:
+class RefreshTokenResource(Resource):
     """
-    Handles the business logic for refreshing JWTs.
-    1. Checks if the current refresh token has been revoked.
-    2. Revokes the current refresh token by adding it to the blocklist.
-    3. Creates a new access and refresh token.
-    4. Returns a dictionary of the new token data.
+    API Resource for refreshing JWTs using a valid refresh token.
     """
 
-    # 1. --- Check for grace period ---
-    grace_key = _get_grace_period_key(current_refresh_jti)
-    cached_data = redis_client.get(grace_key)
-
-    if cached_data:
-        # This token was *just* refreshed. This is a race condition.
-        # Return the *same* new token data to this "losing" tab.
-        current_app.logger.info(f"Grace period hit for JTI: {current_refresh_jti}. Returning cached data.")
-        return json.loads(cached_data)
-
-    # 1. --- Security Check ---
-    # Check if the JTI of the token used for this request is already blocklisted.
-    if is_token_blocklisted(current_refresh_jti):
-        # This is a critical security event. A revoked token is being reused.
-        raise InvalidTokenError("The refresh token has been revoked.")
-
-    # 2. --- Revoke Current Token ---
-    # Immediately add the JTI of the current refresh token to the blocklist to prevent reuse.
-    # The expiration can be taken from the token itself.
-    current_token_payload = get_jwt()
-    expires_at = datetime.fromtimestamp(current_token_payload['exp'], tz=timezone.utc)
-    now = datetime.now(timezone.utc)
-    expires_in_seconds = int((expires_at - now).total_seconds())
-    add_token_to_blocklist(current_refresh_jti, max(1, expires_in_seconds))
+    @jwt_required(refresh=True)
+    @swag_from(refresh_token_text)
+    def post(self):
+        """
+        Processes a POST request to generate a new access and refresh token.
         
-    # 3. --- Generate New Tokens ---
-    new_access_token = create_access_token(identity=user_id)
-    new_refresh_token = create_refresh_token(identity=user_id)
+        Returns:
+            - 200 OK: If token refresh is successful. New tokens are set in cookies.
+            - 401 Unauthorized: If the refresh token is invalid or has been revoked.
+            - 500 Internal Server Error: For unexpected server issues.
+        """
+        try:
+            # 1. Get identity and JTI from the incoming refresh token.
+            user_id = get_jwt_identity()
+            current_jti = get_jwt()['jti']
+            # 2. Delegate all logic to the service layer.
+            token_data = refresh_user_tokens(user_id=user_id, current_refresh_jti=current_jti)
 
-    # 4. --- Get New Token Data ---
-    secret_key = current_app.config['JWT_SECRET_KEY']
-    csrf_values = TokenUtil.generate_csrf_values(new_access_token, new_refresh_token)
-    access_exp_dt = TokenUtil.get_token_expiry_unix(new_access_token, secret_key)
-    refresh_exp_dt = TokenUtil.get_token_expiry_unix(new_refresh_token, secret_key)
+            # 3. Prepare the JSON response body.
+            response_body = {
+                'message': 'Token Refreshed',
+                'access_token_exp': token_data['access_token_exp'],
+                'csrf_access_token': token_data['csrf_access_token'],
+                'csrf_refresh_token': token_data['csrf_refresh_token'],
+            }
+            
+            # 4. Create the response and set the new tokens in cookies.
+            response = make_response(jsonify(response_body), 200)
+            set_auth_cookies(
+                response, 
+                token_data['access_token'], 
+                token_data['refresh_token']
+            )
+            return response
 
-    token_data = {
-        "access_token": new_access_token,
-        "refresh_token": new_refresh_token,
-        "csrf_access_token": csrf_values['csrf_access_token'],
-        "csrf_refresh_token": csrf_values['csrf_refresh_token'],
-        "access_token_exp": access_exp_dt,
-        "refresh_token_exp": refresh_exp_dt
-    }
+        except InvalidTokenError as e:
+            response = make_response(jsonify({'message': str(e)}), 401)
+            unset_jwt_cookies(response)
+            return response
 
-    # --- 6. Set the grace period cache ---
-    # Store the new token data in Redis for 10 seconds, keyed by the
-    # JTI of the token that was *just used*.
-    redis_client.set(grace_key, json.dumps(token_data), ex=GRACE_PERIOD_SECONDS)
-
-    return token_data
+        except Exception as e:
+            current_app.logger.error(f"Token refresh error: {e}", exc_info=True)
+            return {'message': 'Failed to refresh token'}, 500
