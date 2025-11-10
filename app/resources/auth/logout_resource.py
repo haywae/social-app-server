@@ -12,7 +12,7 @@ class LogoutResource(Resource):
     This endpoint invalidates the user's JWT by adding it to a server-side
     blocklist and clears the client-side cookies.
     """
-    @jwt_required()
+    @jwt_required(refresh=True)
     def post(self):
         try:
             # 1. Get the current token's unique ID (JTI) and expiration
