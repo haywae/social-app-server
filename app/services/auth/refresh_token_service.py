@@ -32,21 +32,12 @@ def refresh_user_tokens(user_id: str, current_refresh_jti: str) -> dict:
         current_app.logger.info(f"Grace period hit for JTI: {current_refresh_jti}. Returning cached data.")
         return json.loads(cached_data)
 
-    # 1. --- Security Check ---
+    # 2. --- Security Check ---
     # Check if the JTI of the token used for this request is already blocklisted.
     if is_token_blocklisted(current_refresh_jti):
         # This is a critical security event. A revoked token is being reused.
         raise InvalidTokenError("The refresh token has been revoked.")
-
-    # 2. --- Revoke Current Token ---
-    # Immediately add the JTI of the current refresh token to the blocklist to prevent reuse.
-    # The expiration can be taken from the token itself.
-    current_token_payload = get_jwt()
-    expires_at = datetime.fromtimestamp(current_token_payload['exp'], tz=timezone.utc)
-    now = datetime.now(timezone.utc)
-    expires_in_seconds = int((expires_at - now).total_seconds())
-    add_token_to_blocklist(current_refresh_jti, max(1, expires_in_seconds))
-        
+  
     # 3. --- Generate New Tokens ---
     new_access_token = create_access_token(identity=user_id)
     new_refresh_token = create_refresh_token(identity=user_id)
@@ -66,9 +57,19 @@ def refresh_user_tokens(user_id: str, current_refresh_jti: str) -> dict:
         "refresh_token_exp": refresh_exp_dt
     }
 
-    # --- 6. Set the grace period cache ---
+    # --- 5. Set the grace period cache ---
     # Store the new token data in Redis for 10 seconds, keyed by the
     # JTI of the token that was *just used*.
     redis_client.set(grace_key, json.dumps(token_data), ex=GRACE_PERIOD_SECONDS)
+
+    
+    # --- 6. Revoke Current Token ---
+    # Immediately add the JTI of the current refresh token to the blocklist to prevent reuse.
+    # The expiration can be taken from the token itself.
+    current_token_payload = get_jwt()
+    expires_at = datetime.fromtimestamp(current_token_payload['exp'], tz=timezone.utc)
+    now = datetime.now(timezone.utc)
+    expires_in_seconds = int((expires_at - now).total_seconds())
+    add_token_to_blocklist(current_refresh_jti, max(1, expires_in_seconds))
 
     return token_data
